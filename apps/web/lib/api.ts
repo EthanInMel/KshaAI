@@ -129,9 +129,11 @@ export async function updateSource(id: string, data: Partial<Source>): Promise<a
 }
 
 export async function deleteSource(id: string): Promise<any> {
+    const headers = { ...getAuthHeaders() };
+    delete (headers as any)['Content-Type'];
     const response = await fetch(`${API_BASE_URL}/source/${id}`, {
         method: 'DELETE',
-        headers: getAuthHeaders(),
+        headers,
     });
     return handleResponse(response);
 }
@@ -187,9 +189,11 @@ export async function updateStream(id: string, data: Partial<Stream>): Promise<S
 }
 
 export async function deleteStream(id: string): Promise<any> {
+    const headers = { ...getAuthHeaders() };
+    delete (headers as any)['Content-Type'];
     const response = await fetch(`${API_BASE_URL}/stream/${id}`, {
         method: 'DELETE',
-        headers: getAuthHeaders(),
+        headers,
     });
     return handleResponse(response);
 }
@@ -355,9 +359,11 @@ export async function connectWebSocketSource(sourceId: string, url: string, conf
 }
 
 export async function disconnectWebSocketSource(sourceId: string): Promise<{ success: boolean; message: string }> {
+    const headers = { ...getAuthHeaders() };
+    delete (headers as any)['Content-Type'];
     const response = await fetch(`${API_BASE_URL}/websocket-source/${sourceId}/disconnect`, {
         method: 'DELETE',
-        headers: getAuthHeaders(),
+        headers,
     });
     return handleResponse(response);
 }
@@ -483,9 +489,11 @@ export async function revokeApiKey(id: string): Promise<ApiKey> {
 }
 
 export async function deleteApiKey(id: string): Promise<{ message: string }> {
+    const headers = { ...getAuthHeaders() };
+    delete (headers as any)['Content-Type'];
     const response = await fetch(`${API_BASE_URL}/api-keys/${id}`, {
         method: 'DELETE',
-        headers: getAuthHeaders(),
+        headers,
     });
     return handleResponse(response);
 }

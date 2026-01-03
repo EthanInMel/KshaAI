@@ -58,7 +58,6 @@ export class StreamController {
   }
 
   @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.streamService.remove(id);
   }

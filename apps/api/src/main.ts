@@ -24,22 +24,22 @@ async function bootstrap() {
   // Global Exception Filter
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  const globalPrefix = 'api';
-  // app.setGlobalPrefix(globalPrefix);
 
   // Enable CORS
   app.enableCors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:4200',
+    origin: true, // Allow all origins (reflects the request origin)
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type, Accept, Authorization',
     credentials: true,
   });
 
-  const port = process.env.API_PORT || process.env.PORT || 8001;
+  const port = process.env.API_PORT || process.env.PORT || 8002;
   const host = process.env.HOST || '0.0.0.0';
 
   await app.listen(port, host);
 
   Logger.log(
-    `🚀 KshaAI API is running on: http://localhost:${port}/${globalPrefix}`
+    `🚀 KshaAI API is running on: http://localhost:${port}`
   );
   Logger.log(`📚 Environment: ${process.env.NODE_ENV || 'development'}`);
 }
