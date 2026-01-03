@@ -1,0 +1,276 @@
+// KshaAI - Prisma Schema (Open Source Edition)
+// This is a simplified version without multi-user and enterprise features
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum SourceType {
+  x         // X (Twitter)
+  rss       // RSS Feed
+  wss       // WebSocket
+  webhook   // Webhook
+  newsnow   // NewsNow aggregator
+  bluesky   // Bluesky (AT Protocol)
+  mastodon  // Mastodon (Fediverse)
+  telegram  // Telegram channels
+  discord   // Discord servers
+  reddit    // Reddit subreddits
+  github    // GitHub repos/events
+  webpage   // Web page change monitoring
+}
+
+enum StreamStatus {
+  active
+  paused
+}
+
+enum ChannelType {
+  telegram
+  discord
+  slack
+  webhook
+  email
+}
+
+// ============================================================================
+// CORE MODELS
+// ============================================================================
+
+// Represents a canonical information source
+model Source {
+  id              String     @id @default(cuid())
+  user_id         String     // Owner
+  type            SourceType
+  identifier      String     // e.g., X username "elonmusk", RSS URL
+  config          Json?      // Extra configuration
+  last_polled_at  DateTime?  // Last polling time
+  created_at      DateTime   @default(now())
+  updated_at      DateTime   @updatedAt
+  
+  user         User      @relation(fields: [user_id], references: [id])
+  streams      Stream[]
+  contents     Content[]
+
+  @@unique([type, identifier], name: "type_identifier")
+  @@unique([type, identifier, user_id]) // Unique per user
+  @@index([user_id])
+  @@map("sources")
+}
+
+// Represents a processing stream
+model Stream {
+  id                  String       @id @default(cuid())
+  user_id             String
+  name                String       // e.g., "Elon Musk Monitor"
+  source_id           String
+  prompt_template     Json?        // { triggerPrompt, notificationPrompt }
+  notification_config Json?        // { channel_ids: string[], inline_channels: [] }
+  aggregation_config  Json?
+  llm_config          Json?        // { provider, model, temperature }
+  analysis_config     Json?        // { enabled: boolean }
+  status              StreamStatus @default(active)
+  created_at          DateTime     @default(now())
+  updated_at          DateTime     @updatedAt
+
+  user         User          @relation(fields: [user_id], references: [id])
+  source       Source        @relation(fields: [source_id], references: [id], onDelete: Cascade)
+  logs         Log[]
+  llm_outputs  LlmOutput[]
+  backtests    Backtest[]
+  notification_history NotificationHistory[]
+
+  @@index([source_id])
+  @@index([user_id])
+  @@map("streams")
+}
+
+// Notification channel configurations (reusable across streams)
+model NotificationChannel {
+  id          String      @id @default(cuid())
+  user_id     String
+  name        String      // e.g., "My Telegram Bot", "Dev Discord"
+  type        ChannelType
+  config      Json        // { bot_token, chat_id } or { webhook_url } etc.
+  is_default  Boolean     @default(false)
+  created_at  DateTime    @default(now())
+  updated_at  DateTime    @updatedAt
+
+  user        User        @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+  @@index([type])
+  @@map("notification_channels")
+}
+
+// Represents raw content from sources
+model Content {
+  id          String    @id @default(cuid())
+  source_id   String
+  external_id String?   // External ID from source
+  raw_content String    @db.Text
+  posted_at   DateTime?
+  metadata    Json?
+  created_at  DateTime  @default(now())
+
+  source      Source      @relation(fields: [source_id], references: [id], onDelete: Cascade)
+  logs        Log[]
+  llm_outputs LlmOutput[]
+  backtest_results BacktestResult[]
+
+  @@unique([source_id, external_id])
+  @@index([source_id])
+  @@index([posted_at])
+  @@map("contents")
+}
+
+// Represents processing logs
+model Log {
+  id                  String   @id @default(cuid())
+  stream_id           String
+  content_id          String?  // Optional, can be a general stream log
+  type                String   // info, error, success, warning
+  message             String   @db.Text
+  metadata            Json?    // Additional context
+  created_at          DateTime @default(now())
+  
+  // Legacy fields (optional or removed if not needed)
+  notification_status String?
+  llm_output_id       String?  @unique
+
+  stream     Stream     @relation(fields: [stream_id], references: [id], onDelete: Cascade)
+  content    Content?   @relation(fields: [content_id], references: [id], onDelete: SetNull)
+  llm_output LlmOutput? @relation(fields: [llm_output_id], references: [id])
+
+  @@index([stream_id])
+  @@index([created_at])
+  @@map("logs")
+}
+
+// Represents LLM processing outputs
+model LlmOutput {
+  id          String   @id @default(cuid())
+  content_id  String
+  stream_id   String
+  raw_output  String   @db.Text
+  model       String?  // e.g., "gpt-4", "claude-3-sonnet"
+  prompt_text String?  @db.Text
+  backtest_id String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  log     Log?
+  content Content @relation(fields: [content_id], references: [id], onDelete: Cascade)
+  stream  Stream  @relation(fields: [stream_id], references: [id], onDelete: Cascade)
+
+  @@index([content_id])
+  @@index([stream_id])
+  @@index([created_at])
+  @@map("llm_outputs")
+}
+
+// ============================================================================
+// IDENTITY & ACCESS MANAGEMENT (IAM)
+// ============================================================================
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  password_hash   String?
+  full_name       String?
+  avatar_url      String?
+  role            String   @default("member") // owner, admin, member
+  
+  // User settings (LLM keys, Twitter config, etc.)
+  settings        Json?
+  
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  sources              Source[]
+  streams              Stream[]
+  notification_channels NotificationChannel[]
+
+  @@map("users")
+}
+
+// ============================================================================
+// METADATA MODELS
+// ============================================================================
+
+// ============================================================================
+// BACKTESTING & ANALYTICS
+// ============================================================================
+
+enum BacktestStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model Backtest {
+  id              String         @id @default(cuid())
+  stream_id       String
+  name            String
+  description     String?
+  status          BacktestStatus @default(PENDING)
+  processed_items Int            @default(0)
+  total_items     Int            @default(0)
+  config          Json?
+  range_start     DateTime?
+  range_end       DateTime?
+  started_at      DateTime?
+  completed_at    DateTime?
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+
+  stream  Stream           @relation(fields: [stream_id], references: [id], onDelete: Cascade)
+  results BacktestResult[]
+
+  @@index([stream_id])
+  @@map("backtests")
+}
+
+model BacktestResult {
+  id                String   @id @default(cuid())
+  backtest_id       String
+  content_id        String
+  status            String   // SUCCESS, FAILURE
+  output            Json?
+  error_message     String?
+  execution_time_ms Int?
+  created_at        DateTime @default(now())
+
+  backtest Backtest @relation(fields: [backtest_id], references: [id], onDelete: Cascade)
+  content  Content  @relation(fields: [content_id], references: [id], onDelete: Cascade)
+
+  @@index([backtest_id])
+  @@index([content_id])
+  @@map("backtest_results")
+}
+
+model NotificationHistory {
+  id          String   @id @default(cuid())
+  stream_id   String
+  status      String   // success, failed
+  channel     String   // telegram, discord, etc.
+  message     String?  @db.Text
+  metadata    Json?
+  created_at  DateTime @default(now())
+
+  stream Stream @relation(fields: [stream_id], references: [id], onDelete: Cascade)
+
+  @@index([stream_id])
+  @@index([created_at])
+  @@map("notification_history")
+}
+
